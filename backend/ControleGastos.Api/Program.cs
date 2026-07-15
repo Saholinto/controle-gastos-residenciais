@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using ControleGastos.Api.Data;
+using ControleGastos.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,6 +14,7 @@ builder.Services
     });
 
 builder.Services.AddOpenApi();
+builder.Services.AddScoped<PersonService>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
