@@ -140,3 +140,8 @@ Content-Type: application/json
   "type": "Expense",
   "personId": 5
 }
+###
+
+### Consultar totais por pessoa e total geral
+GET {{ControleGastos_Api_HostAddress}}/api/totals
+Accept: application/json
