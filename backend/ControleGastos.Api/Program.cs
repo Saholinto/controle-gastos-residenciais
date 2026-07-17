@@ -15,6 +15,7 @@ builder.Services
 
 builder.Services.AddOpenApi();
 builder.Services.AddScoped<PersonService>();
+builder.Services.AddScoped<TransactionService>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
 {

@@ -1,6 +1,142 @@
-@ControleGastos.Api_HostAddress = http://localhost:5288
+@ControleGastos_Api_HostAddress = http://localhost:5288
 
-GET {{ControleGastos.Api_HostAddress}}/weatherforecast/
+### Listar pessoas
+GET {{ControleGastos_Api_HostAddress}}/api/people
 Accept: application/json
 
 ###
+
+### Cadastrar pessoa adulta
+POST {{ControleGastos_Api_HostAddress}}/api/people
+Content-Type: application/json
+
+{
+  "name": "Ana Souza",
+  "age": 32
+}
+
+###
+
+### Cadastrar pessoa menor de idade
+POST {{ControleGastos_Api_HostAddress}}/api/people
+Content-Type: application/json
+
+{
+  "name": "Pedro Lima",
+  "age": 16
+}
+
+###
+
+### Testar nome vazio
+POST {{ControleGastos_Api_HostAddress}}/api/people
+Content-Type: application/json
+
+{
+  "name": "",
+  "age": 25
+}
+
+###
+
+### Testar idade inválida
+POST {{ControleGastos_Api_HostAddress}}/api/people
+Content-Type: application/json
+
+{
+  "name": "Pessoa Inválida",
+  "age": 150
+}
+
+###
+
+### Excluir pessoa existente
+DELETE {{ControleGastos_Api_HostAddress}}/api/people/1
+
+###
+
+### Excluir pessoa inexistente
+DELETE {{ControleGastos_Api_HostAddress}}/api/people/999
+###
+
+### Listar transações
+GET {{ControleGastos_Api_HostAddress}}/api/transactions
+Accept: application/json
+
+###
+
+### Cadastrar receita para pessoa adulta
+POST {{ControleGastos_Api_HostAddress}}/api/transactions
+Content-Type: application/json
+
+{
+  "description": "Salário",
+  "amount": 3000,
+  "type": "Income",
+  "personId": 11
+}
+
+###
+
+### Cadastrar despesa para pessoa adulta
+POST {{ControleGastos_Api_HostAddress}}/api/transactions
+Content-Type: application/json
+
+{
+  "description": "Mercado",
+  "amount": 450,
+  "type": "Expense",
+  "personId": 12
+}
+
+###
+
+### Cadastrar despesa para menor de idade
+POST {{ControleGastos_Api_HostAddress}}/api/transactions
+Content-Type: application/json
+
+{
+  "description": "Material escolar",
+  "amount": 80,
+  "type": "Expense",
+  "personId": 3
+}
+
+###
+
+### Tentar cadastrar receita para menor de idade
+POST {{ControleGastos_Api_HostAddress}}/api/transactions
+Content-Type: application/json
+
+{
+  "description": "Mesada",
+  "amount": 100,
+  "type": "Income",
+  "personId": 3
+}
+
+###
+
+### Tentar cadastrar para pessoa inexistente
+POST {{ControleGastos_Api_HostAddress}}/api/transactions
+Content-Type: application/json
+
+{
+  "description": "Teste",
+  "amount": 50,
+  "type": "Expense",
+  "personId": 999
+}
+
+###
+
+### Testar valor inválido
+POST {{ControleGastos_Api_HostAddress}}/api/transactions
+Content-Type: application/json
+
+{
+  "description": "Valor inválido",
+  "amount": 0,
+  "type": "Expense",
+  "personId": 5
+}
