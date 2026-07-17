@@ -358,19 +358,19 @@ Pessoa não encontrada.
 
 A interface apresenta:
 
-- título e descrição do sistema;
-- resumo do total de receitas;
-- resumo do total de despesas;
-- saldo financeiro atual;
-- formulário para cadastro de moradores;
-- formulário para cadastro de transações;
-- seleção da pessoa responsável pela movimentação;
-- histórico de receitas e despesas;
-- identificação visual de entradas e saídas;
-- lista de pessoas cadastradas;
-- opção de exclusão de moradores;
-- mensagens de sucesso e erro;
-- botão para atualização dos dados.
+- Título e descrição do sistema
+- Resumo do total de receitas
+- Resumo do total de despesas
+- Saldo financeiro atual
+- Formulário para cadastro de moradores
+- Formulário para cadastro de transações
+- Seleção da pessoa responsável pela movimentação
+- Histórico de receitas e despesas
+- Identificação visual de entradas e saídas
+- Lista de pessoas cadastradas
+- Opção de exclusão de moradores
+- Mensagens de sucesso e erro
+- Botão para atualização dos dados
 
 ## Integração entre frontend e backend
 
@@ -382,11 +382,11 @@ http://localhost:5288
 
 O sistema consulta os endpoints de pessoas e transações para atualizar automaticamente:
 
-- moradores cadastrados;
-- histórico financeiro;
-- total de receitas;
-- total de despesas;
-- saldo disponível.
+- Moradores cadastrados
+- Histórico financeiro
+- Total de receitas
+- Total de despesas
+- Saldo disponível
 
 ## Banco de dados
 
@@ -422,7 +422,7 @@ git push
 - Paginação do histórico
 - Confirmação visual antes da exclusão
 - Autenticação de usuários
-- Relatórios mensais
+- Relatórios
 - Gráficos financeiros
 - Testes automatizados
 - Dockerização da aplicação
@@ -430,4 +430,4 @@ git push
 
 ## Autora
 
-Desenvolvido por **Sara Oliveira**.
+Desenvolvido por **Sara J. O. Olinto**.
