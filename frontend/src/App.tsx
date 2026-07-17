@@ -26,6 +26,21 @@ interface Transaction {
   personName: string
 }
 
+interface PersonTotals {
+  personId: number
+  personName: string
+  totalIncome: number
+  totalExpense: number
+  balance: number
+}
+
+interface TotalsResponse {
+  people: PersonTotals[]
+  totalIncome: number
+  totalExpense: number
+  netBalance: number
+}
+
 interface PersonForm {
   name: string
   age: string
@@ -38,220 +53,196 @@ interface TransactionForm {
   personId: string
 }
 
-async function readErrorMessage(
-  response: Response,
-  defaultMessage: string,
-) {
-  try {
-    const data = await response.json()
+type MessageType = 'success' | 'error'
 
-    if (typeof data?.message === 'string') {
-      return data.message
-    }
+interface FeedbackMessage {
+  type: MessageType
+  text: string
+}
 
-    if (data?.errors && typeof data.errors === 'object') {
-      const messages = Object.values(data.errors)
-        .flatMap((value) =>
-          Array.isArray(value) ? value : [String(value)],
-        )
-        .filter(Boolean)
+const initialPersonForm: PersonForm = {
+  name: '',
+  age: '',
+}
 
-      if (messages.length > 0) {
-        return messages.join(' ')
-      }
-    }
-
-    if (typeof data?.title === 'string') {
-      return data.title
-    }
-  } catch {
-    // A resposta pode estar vazia ou não estar no formato JSON.
-  }
-
-  return defaultMessage
+const initialTransactionForm: TransactionForm = {
+  description: '',
+  amount: '',
+  type: 'Expense',
+  personId: '',
 }
 
 function App() {
   const [people, setPeople] = useState<Person[]>([])
-  const [transactions, setTransactions] = useState<Transaction[]>(
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+
+  const [totals, setTotals] = useState<TotalsResponse>({
+    people: [],
+    totalIncome: 0,
+    totalExpense: 0,
+    netBalance: 0,
+  })
+
+  const [personForm, setPersonForm] =
+    useState<PersonForm>(initialPersonForm)
+
+  const [transactionForm, setTransactionForm] =
+    useState<TransactionForm>(initialTransactionForm)
+
+  const [loading, setLoading] = useState(true)
+  const [submittingPerson, setSubmittingPerson] = useState(false)
+
+  const [submittingTransaction, setSubmittingTransaction] =
+    useState(false)
+
+  const [deletingPersonId, setDeletingPersonId] =
+    useState<number | null>(null)
+
+  const [message, setMessage] =
+    useState<FeedbackMessage | null>(null)
+
+  const currencyFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+      }),
     [],
   )
 
-  const [personForm, setPersonForm] = useState<PersonForm>({
-    name: '',
-    age: '',
-  })
+  const showMessage = useCallback(
+    (type: MessageType, text: string) => {
+      setMessage({ type, text })
 
-  const [transactionForm, setTransactionForm] =
-    useState<TransactionForm>({
-      description: '',
-      amount: '',
-      type: 'Expense',
-      personId: '',
-    })
+      window.setTimeout(() => {
+        setMessage(null)
+      }, 4500)
+    },
+    [],
+  )
 
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSavingPerson, setIsSavingPerson] = useState(false)
+  const extractErrorMessage = async (
+    response: Response,
+    defaultMessage: string,
+  ) => {
+    try {
+      const data = await response.json()
 
-  const [isSavingTransaction, setIsSavingTransaction] =
-    useState(false)
+      if (typeof data?.message === 'string') {
+        return data.message
+      }
 
-  const [deletingPersonId, setDeletingPersonId] = useState<
-    number | null
-  >(null)
+      if (data?.errors && typeof data.errors === 'object') {
+        const validationMessages = Object.values(data.errors)
+          .flat()
+          .filter(
+            (item): item is string =>
+              typeof item === 'string',
+          )
 
-  const [successMessage, setSuccessMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
+        if (validationMessages.length > 0) {
+          return validationMessages.join(' ')
+        }
+      }
 
-  const clearMessages = () => {
-    setSuccessMessage('')
-    setErrorMessage('')
+      if (typeof data?.title === 'string') {
+        return data.title
+      }
+    } catch {
+      // A resposta pode não possuir conteúdo JSON.
+    }
+
+    return defaultMessage
   }
 
   const loadData = useCallback(async () => {
-    setIsLoading(true)
-    setErrorMessage('')
+    setLoading(true)
 
     try {
-      const [peopleResponse, transactionsResponse] =
-        await Promise.all([
-          fetch(`${API_URL}/people`),
-          fetch(`${API_URL}/transactions`),
-        ])
+      const [
+        peopleResponse,
+        transactionsResponse,
+        totalsResponse,
+      ] = await Promise.all([
+        fetch(`${API_URL}/people`),
+        fetch(`${API_URL}/transactions`),
+        fetch(`${API_URL}/totals`),
+      ])
 
-      if (!peopleResponse.ok) {
+      if (
+        !peopleResponse.ok ||
+        !transactionsResponse.ok ||
+        !totalsResponse.ok
+      ) {
         throw new Error(
-          await readErrorMessage(
-            peopleResponse,
-            'Não foi possível carregar as pessoas.',
-          ),
+          'Não foi possível carregar os dados da aplicação.',
         )
       }
 
-      if (!transactionsResponse.ok) {
-        throw new Error(
-          await readErrorMessage(
-            transactionsResponse,
-            'Não foi possível carregar as transações.',
-          ),
-        )
-      }
-
-      const peopleData: Person[] = await peopleResponse.json()
+      const peopleData: Person[] =
+        await peopleResponse.json()
 
       const transactionsData: Transaction[] =
         await transactionsResponse.json()
 
+      const totalsData: TotalsResponse =
+        await totalsResponse.json()
+
       setPeople(peopleData)
       setTransactions(transactionsData)
+      setTotals(totalsData)
 
       setTransactionForm((currentForm) => {
         const selectedPersonStillExists = peopleData.some(
           (person) =>
-            person.id === Number(currentForm.personId),
+            person.id.toString() === currentForm.personId,
         )
-
-        if (selectedPersonStillExists) {
-          return currentForm
-        }
 
         return {
           ...currentForm,
-          personId:
-            peopleData.length > 0
-              ? String(peopleData[0].id)
-              : '',
+          personId: selectedPersonStillExists
+            ? currentForm.personId
+            : peopleData[0]?.id.toString() ?? '',
         }
       })
     } catch (error) {
-      const message =
+      const errorMessage =
         error instanceof Error
           ? error.message
           : 'Erro ao conectar com o backend.'
 
-      setErrorMessage(
-        `${message} Confirme se a API está rodando na porta 5288.`,
-      )
+      showMessage('error', errorMessage)
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
-  }, [])
+  }, [showMessage])
 
   useEffect(() => {
     void loadData()
   }, [loadData])
 
-  const totals = useMemo(() => {
-    const income = transactions
-      .filter((transaction) => transaction.type === 'Income')
-      .reduce(
-        (total, transaction) => total + transaction.amount,
-        0,
-      )
-
-    const expense = transactions
-      .filter((transaction) => transaction.type === 'Expense')
-      .reduce(
-        (total, transaction) => total + transaction.amount,
-        0,
-      )
-
-    return {
-      income,
-      expense,
-      balance: income - expense,
-    }
-  }, [transactions])
-
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value)
-
-  const getInitials = (name: string) => {
-    const words = name.trim().split(/\s+/).filter(Boolean)
-
-    if (words.length === 0) {
-      return '?'
-    }
-
-    if (words.length === 1) {
-      return words[0].charAt(0).toUpperCase()
-    }
-
-    return `${words[0].charAt(0)}${words[
-      words.length - 1
-    ].charAt(0)}`.toUpperCase()
-  }
-
-  const handleCreatePerson = async (
+  const handlePersonSubmit = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault()
-    clearMessages()
 
     const name = personForm.name.trim()
     const age = Number(personForm.age)
 
     if (!name) {
-      setErrorMessage('Digite o nome da pessoa.')
+      showMessage('error', 'Informe o nome da pessoa.')
       return
     }
 
-    if (
-      personForm.age.trim() === '' ||
-      !Number.isInteger(age) ||
-      age < 0 ||
-      age > 130
-    ) {
-      setErrorMessage(
-        'Digite uma idade inteira entre 0 e 130 anos.',
+    if (!Number.isInteger(age) || age < 0 || age > 130) {
+      showMessage(
+        'error',
+        'Informe uma idade válida entre 0 e 130 anos.',
       )
       return
     }
 
-    setIsSavingPerson(true)
+    setSubmittingPerson(true)
 
     try {
       const response = await fetch(`${API_URL}/people`, {
@@ -266,64 +257,70 @@ function App() {
       })
 
       if (!response.ok) {
-        throw new Error(
-          await readErrorMessage(
-            response,
-            'Não foi possível cadastrar a pessoa.',
-          ),
+        const errorMessage = await extractErrorMessage(
+          response,
+          'Não foi possível cadastrar a pessoa.',
         )
+
+        throw new Error(errorMessage)
       }
 
-      setPersonForm({
-        name: '',
-        age: '',
-      })
+      setPersonForm(initialPersonForm)
 
-      setSuccessMessage('Pessoa cadastrada com sucesso.')
+      showMessage(
+        'success',
+        'Pessoa cadastrada com sucesso.',
+      )
 
       await loadData()
     } catch (error) {
-      setErrorMessage(
+      showMessage(
+        'error',
         error instanceof Error
           ? error.message
-          : 'Não foi possível cadastrar a pessoa.',
+          : 'Erro ao cadastrar a pessoa.',
       )
     } finally {
-      setIsSavingPerson(false)
+      setSubmittingPerson(false)
     }
   }
 
-  const handleCreateTransaction = async (
+  const handleTransactionSubmit = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault()
-    clearMessages()
 
-    const description = transactionForm.description.trim()
+    const description =
+      transactionForm.description.trim()
 
-    const normalizedAmount = transactionForm.amount
-      .replace(/\./g, '')
-      .replace(',', '.')
+    const normalizedAmount =
+      transactionForm.amount.replace(',', '.')
 
     const amount = Number(normalizedAmount)
     const personId = Number(transactionForm.personId)
 
     if (!description) {
-      setErrorMessage('Digite a descrição da transação.')
+      showMessage(
+        'error',
+        'Informe a descrição da transação.',
+      )
       return
     }
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      setErrorMessage('O valor deve ser maior que zero.')
+      showMessage(
+        'error',
+        'O valor deve ser maior que zero.',
+      )
       return
     }
 
-    if (!personId) {
-      setErrorMessage('Selecione uma pessoa.')
+    if (!Number.isInteger(personId) || personId <= 0) {
+      showMessage('error', 'Selecione uma pessoa.')
       return
     }
 
-    setIsSavingTransaction(true)
+    setSubmittingTransaction(true)
 
     try {
       const response = await fetch(
@@ -343,45 +340,48 @@ function App() {
       )
 
       if (!response.ok) {
-        throw new Error(
-          await readErrorMessage(
-            response,
-            'Não foi possível cadastrar a transação.',
-          ),
+        const errorMessage = await extractErrorMessage(
+          response,
+          'Não foi possível cadastrar a transação.',
         )
+
+        throw new Error(errorMessage)
       }
 
       setTransactionForm((currentForm) => ({
-        description: '',
-        amount: '',
-        type: 'Expense',
+        ...initialTransactionForm,
         personId: currentForm.personId,
       }))
 
-      setSuccessMessage('Transação cadastrada com sucesso.')
+      showMessage(
+        'success',
+        'Transação cadastrada com sucesso.',
+      )
 
       await loadData()
     } catch (error) {
-      setErrorMessage(
+      showMessage(
+        'error',
         error instanceof Error
           ? error.message
-          : 'Não foi possível cadastrar a transação.',
+          : 'Erro ao cadastrar a transação.',
       )
     } finally {
-      setIsSavingTransaction(false)
+      setSubmittingTransaction(false)
     }
   }
 
-  const handleDeletePerson = async (person: Person) => {
+  const handleDeletePerson = async (
+    person: Person,
+  ) => {
     const confirmed = window.confirm(
-      `Deseja realmente excluir ${person.name}?`,
+      `Deseja excluir ${person.name}?\n\nTodas as transações dessa pessoa também serão apagadas.`,
     )
 
     if (!confirmed) {
       return
     }
 
-    clearMessages()
     setDeletingPersonId(person.id)
 
     try {
@@ -393,103 +393,151 @@ function App() {
       )
 
       if (!response.ok) {
-        throw new Error(
-          await readErrorMessage(
-            response,
-            'Não foi possível excluir a pessoa.',
-          ),
+        const errorMessage = await extractErrorMessage(
+          response,
+          'Não foi possível excluir a pessoa.',
         )
+
+        throw new Error(errorMessage)
       }
 
-      setSuccessMessage('Pessoa excluída com sucesso.')
+      showMessage(
+        'success',
+        'Pessoa e suas transações foram excluídas com sucesso.',
+      )
 
       await loadData()
     } catch (error) {
-      setErrorMessage(
+      showMessage(
+        'error',
         error instanceof Error
           ? error.message
-          : 'Não foi possível excluir a pessoa.',
+          : 'Erro ao excluir a pessoa.',
       )
     } finally {
       setDeletingPersonId(null)
     }
   }
 
+  const getInitials = (name: string) => {
+    const words = name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+
+    if (words.length === 0) {
+      return '?'
+    }
+
+    if (words.length === 1) {
+      return words[0].slice(0, 2).toUpperCase()
+    }
+
+    return `${words[0][0]}${
+      words[words.length - 1][0]
+    }`.toUpperCase()
+  }
+
+  const findPersonTotals = (personId: number) =>
+    totals.people.find(
+      (personTotal) =>
+        personTotal.personId === personId,
+    )
+
   return (
-    <main className="page-container">
-      <header className="page-header">
-        <div>
-          <span className="eyebrow">
-            Financeiro familiar
-          </span>
+    <main className="app-shell">
+      <section className="app-container">
+        <header className="app-header">
+          <div>
+            <span className="eyebrow">
+              Financeiro familiar
+            </span>
 
-          <h1>Controle de Gastos Residenciais</h1>
+            <h1>
+              Controle de Gastos Residenciais
+            </h1>
 
-          <p>
-            Cadastre moradores, registre receitas e despesas e
-            acompanhe o saldo da residência.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => void loadData()}
-          disabled={isLoading}
-        >
-          {isLoading ? 'Atualizando...' : 'Atualizar dados'}
-        </button>
-      </header>
-
-      {successMessage && (
-        <div className="alert success-alert">
-          {successMessage}
-        </div>
-      )}
-
-      {errorMessage && (
-        <div className="alert error-alert">
-          {errorMessage}
-        </div>
-      )}
-
-      <section className="summary-grid">
-        <article className="summary-card income-card">
-          <span>Receitas</span>
-          <strong>{formatCurrency(totals.income)}</strong>
-        </article>
-
-        <article className="summary-card expense-card">
-          <span>Despesas</span>
-          <strong>{formatCurrency(totals.expense)}</strong>
-        </article>
-
-        <article className="summary-card balance-card">
-          <span>Saldo</span>
-          <strong>{formatCurrency(totals.balance)}</strong>
-        </article>
-      </section>
-
-      <section className="forms-grid">
-        <article className="content-card">
-          <div className="card-heading">
-            <div>
-              <span className="card-label">Moradores</span>
-              <h2>Cadastrar pessoa</h2>
-            </div>
+            <p className="subtitle">
+              Cadastre moradores, registre receitas e
+              despesas e acompanhe os resultados financeiros
+              de cada pessoa e da residência.
+            </p>
           </div>
 
-          <form
-            className="form"
-            onSubmit={handleCreatePerson}
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
           >
-            <label>
-              Nome
+            {loading
+              ? 'Atualizando...'
+              : 'Atualizar dados'}
+          </button>
+        </header>
+
+        {message && (
+          <div
+            className={`message message-${message.type}`}
+            role="alert"
+          >
+            {message.text}
+          </div>
+        )}
+
+        <section
+          className="summary-grid"
+          aria-label="Totais gerais"
+        >
+          <article className="summary-card income-card">
+            <span>Receitas gerais</span>
+
+            <strong>
+              {currencyFormatter.format(
+                totals.totalIncome,
+              )}
+            </strong>
+          </article>
+
+          <article className="summary-card expense-card">
+            <span>Despesas gerais</span>
+
+            <strong>
+              {currencyFormatter.format(
+                totals.totalExpense,
+              )}
+            </strong>
+          </article>
+
+          <article className="summary-card balance-card">
+            <span>Saldo líquido</span>
+
+            <strong>
+              {currencyFormatter.format(
+                totals.netBalance,
+              )}
+            </strong>
+          </article>
+        </section>
+
+        <section className="forms-grid">
+          <article className="panel">
+            <span className="section-label">
+              Moradores
+            </span>
+
+            <h2>Cadastrar pessoa</h2>
+
+            <form onSubmit={handlePersonSubmit}>
+              <label htmlFor="person-name">
+                Nome
+              </label>
 
               <input
+                id="person-name"
                 type="text"
-                value={personForm.name}
                 placeholder="Ex.: Maria Silva"
+                value={personForm.name}
                 maxLength={100}
                 onChange={(event) =>
                   setPersonForm((currentForm) => ({
@@ -498,17 +546,18 @@ function App() {
                   }))
                 }
               />
-            </label>
 
-            <label>
-              Idade
+              <label htmlFor="person-age">
+                Idade
+              </label>
 
               <input
+                id="person-age"
                 type="number"
-                value={personForm.age}
                 placeholder="Ex.: 30"
                 min={0}
                 max={130}
+                value={personForm.age}
                 onChange={(event) =>
                   setPersonForm((currentForm) => ({
                     ...currentForm,
@@ -516,100 +565,119 @@ function App() {
                   }))
                 }
               />
-            </label>
 
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={isSavingPerson}
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={submittingPerson}
+              >
+                {submittingPerson
+                  ? 'Cadastrando...'
+                  : 'Cadastrar pessoa'}
+              </button>
+            </form>
+          </article>
+
+          <article className="panel">
+            <span className="section-label">
+              Movimentações
+            </span>
+
+            <h2>Cadastrar transação</h2>
+
+            <form
+              onSubmit={handleTransactionSubmit}
             >
-              {isSavingPerson
-                ? 'Cadastrando...'
-                : 'Cadastrar pessoa'}
-            </button>
-          </form>
-        </article>
-
-        <article className="content-card">
-          <div className="card-heading">
-            <div>
-              <span className="card-label">
-                Movimentações
-              </span>
-
-              <h2>Cadastrar transação</h2>
-            </div>
-          </div>
-
-          <form
-            className="form"
-            onSubmit={handleCreateTransaction}
-          >
-            <label>
-              Descrição
+              <label htmlFor="transaction-description">
+                Descrição
+              </label>
 
               <input
+                id="transaction-description"
                 type="text"
-                value={transactionForm.description}
                 placeholder="Ex.: Mercado"
-                maxLength={150}
+                value={transactionForm.description}
                 onChange={(event) =>
-                  setTransactionForm((currentForm) => ({
-                    ...currentForm,
-                    description: event.target.value,
-                  }))
+                  setTransactionForm(
+                    (currentForm) => ({
+                      ...currentForm,
+                      description:
+                        event.target.value,
+                    }),
+                  )
                 }
               />
-            </label>
 
-            <div className="form-row">
-              <label>
-                Valor
+              <div className="form-row">
+                <div>
+                  <label htmlFor="transaction-amount">
+                    Valor
+                  </label>
 
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={transactionForm.amount}
-                  placeholder="0,00"
-                  onChange={(event) =>
-                    setTransactionForm((currentForm) => ({
-                      ...currentForm,
-                      amount: event.target.value,
-                    }))
-                  }
-                />
+                  <input
+                    id="transaction-amount"
+                    type="number"
+                    placeholder="0,00"
+                    min="0.01"
+                    step="0.01"
+                    value={transactionForm.amount}
+                    onChange={(event) =>
+                      setTransactionForm(
+                        (currentForm) => ({
+                          ...currentForm,
+                          amount:
+                            event.target.value,
+                        }),
+                      )
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="transaction-type">
+                    Tipo
+                  </label>
+
+                  <select
+                    id="transaction-type"
+                    value={transactionForm.type}
+                    onChange={(event) =>
+                      setTransactionForm(
+                        (currentForm) => ({
+                          ...currentForm,
+                          type: event.target
+                            .value as TransactionType,
+                        }),
+                      )
+                    }
+                  >
+                    <option value="Expense">
+                      Despesa
+                    </option>
+
+                    <option value="Income">
+                      Receita
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <label htmlFor="transaction-person">
+                Pessoa
               </label>
-
-              <label>
-                Tipo
-
-                <select
-                  value={transactionForm.type}
-                  onChange={(event) =>
-                    setTransactionForm((currentForm) => ({
-                      ...currentForm,
-                      type: event.target
-                        .value as TransactionType,
-                    }))
-                  }
-                >
-                  <option value="Expense">Despesa</option>
-                  <option value="Income">Receita</option>
-                </select>
-              </label>
-            </div>
-
-            <label>
-              Pessoa
 
               <select
+                id="transaction-person"
                 value={transactionForm.personId}
                 disabled={people.length === 0}
                 onChange={(event) =>
-                  setTransactionForm((currentForm) => ({
-                    ...currentForm,
-                    personId: event.target.value,
-                  }))
+                  setTransactionForm(
+                    (currentForm) => ({
+                      ...currentForm,
+                      personId:
+                        event.target.value,
+                    }),
+                  )
                 }
               >
                 {people.length === 0 ? (
@@ -622,33 +690,37 @@ function App() {
                       key={person.id}
                       value={person.id}
                     >
-                      {person.name} — {person.age} anos
+                      {person.name} — {person.age}{' '}
+                      anos
                     </option>
                   ))
                 )}
               </select>
-            </label>
 
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={
-                isSavingTransaction || people.length === 0
-              }
-            >
-              {isSavingTransaction
-                ? 'Cadastrando...'
-                : 'Cadastrar transação'}
-            </button>
-          </form>
-        </article>
-      </section>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={
+                  submittingTransaction ||
+                  loading ||
+                  people.length === 0
+                }
+              >
+                {submittingTransaction
+                  ? 'Cadastrando...'
+                  : 'Cadastrar transação'}
+              </button>
+            </form>
+          </article>
+        </section>
 
-      <section className="data-section">
-        <article className="content-card">
-          <div className="card-heading">
+        <section className="panel history-panel">
+          <div className="section-heading">
             <div>
-              <span className="card-label">Histórico</span>
+              <span className="section-label">
+                Histórico
+              </span>
+
               <h2>Transações</h2>
             </div>
 
@@ -657,70 +729,217 @@ function App() {
             </span>
           </div>
 
-          {transactions.length === 0 ? (
-            <p className="empty-message">
+          {loading ? (
+            <p className="empty-state">
+              Carregando transações...
+            </p>
+          ) : transactions.length === 0 ? (
+            <p className="empty-state">
               Nenhuma transação cadastrada.
             </p>
           ) : (
-            <div className="transactions-list">
+            <div className="transactions-grid">
               {transactions.map((transaction) => {
                 const isIncome =
                   transaction.type === 'Income'
 
                 return (
-                  <div
-                    className="transaction-item"
+                  <article
+                    className="transaction-card"
                     key={transaction.id}
                   >
-                    <div
+                    <span
                       className={`transaction-icon ${
                         isIncome
                           ? 'income-icon'
                           : 'expense-icon'
                       }`}
-                      translate="no"
+                      aria-hidden="true"
                     >
                       {isIncome ? '↑' : '↓'}
-                    </div>
+                    </span>
 
-                    <div className="transaction-info">
+                    <div className="transaction-main">
                       <strong>
                         {transaction.description}
                       </strong>
 
-                      <span>{transaction.personName}</span>
+                      <small>
+                        {transaction.personName}
+                      </small>
                     </div>
 
                     <strong
-                      className={`transaction-value ${
+                      className={
                         isIncome
-                          ? 'income-value'
-                          : 'expense-value'
-                      }`}
+                          ? 'positive-value'
+                          : 'negative-value'
+                      }
                     >
                       {isIncome ? '+' : '-'}{' '}
-                      {formatCurrency(transaction.amount)}
+                      {currencyFormatter.format(
+                        transaction.amount,
+                      )}
                     </strong>
-                  </div>
+                  </article>
                 )
               })}
             </div>
           )}
-        </article>
+        </section>
 
-        <article className="content-card">
-          <div className="card-heading">
+        <section className="panel totals-panel">
+          <div className="section-heading">
             <div>
-              <span className="card-label">
+              <span className="section-label">
+                Consulta de totais
+              </span>
+
+              <h2>Totais por pessoa</h2>
+            </div>
+
+            <span className="count-badge">
+              {totals.people.length}
+            </span>
+          </div>
+
+          {loading ? (
+            <p className="empty-state">
+              Calculando totais...
+            </p>
+          ) : totals.people.length === 0 ? (
+            <p className="empty-state">
+              Cadastre pessoas para visualizar os
+              totais individuais.
+            </p>
+          ) : (
+            <>
+              <div className="person-totals-grid">
+                {totals.people.map(
+                  (personTotal) => (
+                    <article
+                      className="person-total-card"
+                      key={personTotal.personId}
+                    >
+                      <div className="person-total-header">
+                        <span
+                          className="avatar notranslate"
+                          translate="no"
+                        >
+                          {getInitials(
+                            personTotal.personName,
+                          )}
+                        </span>
+
+                        <div>
+                          <strong>
+                            {personTotal.personName}
+                          </strong>
+
+                          <small>
+                            Pessoa #
+                            {personTotal.personId}
+                          </small>
+                        </div>
+                      </div>
+
+                      <div className="person-values">
+                        <div>
+                          <span>Receitas</span>
+
+                          <strong className="positive-value">
+                            {currencyFormatter.format(
+                              personTotal.totalIncome,
+                            )}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span>Despesas</span>
+
+                          <strong className="negative-value">
+                            {currencyFormatter.format(
+                              personTotal.totalExpense,
+                            )}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span>Saldo</span>
+
+                          <strong
+                            className={
+                              personTotal.balance >= 0
+                                ? 'positive-value'
+                                : 'negative-value'
+                            }
+                          >
+                            {currencyFormatter.format(
+                              personTotal.balance,
+                            )}
+                          </strong>
+                        </div>
+                      </div>
+                    </article>
+                  ),
+                )}
+              </div>
+
+              <article className="general-total-card">
+                <div>
+                  <span>
+                    Total geral de receitas
+                  </span>
+
+                  <strong className="positive-value">
+                    {currencyFormatter.format(
+                      totals.totalIncome,
+                    )}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Total geral de despesas
+                  </span>
+
+                  <strong className="negative-value">
+                    {currencyFormatter.format(
+                      totals.totalExpense,
+                    )}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Saldo líquido geral
+                  </span>
+
+                  <strong
+                    className={
+                      totals.netBalance >= 0
+                        ? 'positive-value'
+                        : 'negative-value'
+                    }
+                  >
+                    {currencyFormatter.format(
+                      totals.netBalance,
+                    )}
+                  </strong>
+                </div>
+              </article>
+            </>
+          )}
+        </section>
+
+        <section className="panel people-panel">
+          <div className="section-heading">
+            <div>
+              <span className="section-label">
                 Pessoas cadastradas
               </span>
 
-              <h2>
-                {people.length}{' '}
-                {people.length === 1
-                  ? 'pessoa'
-                  : 'pessoas'}
-              </h2>
+              <h2>{people.length} pessoa(s)</h2>
             </div>
 
             <span className="count-badge">
@@ -728,46 +947,81 @@ function App() {
             </span>
           </div>
 
-          {people.length === 0 ? (
-            <p className="empty-message">
+          {loading ? (
+            <p className="empty-state">
+              Carregando pessoas...
+            </p>
+          ) : people.length === 0 ? (
+            <p className="empty-state">
               Nenhuma pessoa cadastrada.
             </p>
           ) : (
-            <div className="people-list">
-              {people.map((person) => (
-                <div
-                  className="person-item"
-                  key={person.id}
-                >
-                  <div
-                    className="person-avatar notranslate"
-                    translate="no"
-                  >
-                    {getInitials(person.name)}
-                  </div>
+            <div className="people-grid">
+              {people.map((person) => {
+                const personTotal =
+                  findPersonTotals(person.id)
 
-                  <div className="person-info">
-                    <strong>{person.name}</strong>
-                    <span>{person.age} anos</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="delete-button"
-                    disabled={deletingPersonId === person.id}
-                    onClick={() =>
-                      void handleDeletePerson(person)
-                    }
+                return (
+                  <article
+                    className="person-card"
+                    key={person.id}
                   >
-                    {deletingPersonId === person.id
-                      ? 'Excluindo...'
-                      : 'Excluir'}
-                  </button>
-                </div>
-              ))}
+                    <span
+                      className="avatar notranslate"
+                      translate="no"
+                    >
+                      {getInitials(person.name)}
+                    </span>
+
+                    <div className="person-info">
+                      <strong>
+                        {person.name}
+                      </strong>
+
+                      <small>
+                        {person.age} anos
+                      </small>
+
+                      {personTotal && (
+                        <span className="person-balance">
+                          Saldo:{' '}
+                          <strong
+                            className={
+                              personTotal.balance >= 0
+                                ? 'positive-value'
+                                : 'negative-value'
+                            }
+                          >
+                            {currencyFormatter.format(
+                              personTotal.balance,
+                            )}
+                          </strong>
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      className="delete-button"
+                      type="button"
+                      disabled={
+                        deletingPersonId === person.id
+                      }
+                      onClick={() =>
+                        void handleDeletePerson(
+                          person,
+                        )
+                      }
+                    >
+                      {deletingPersonId === person.id
+                        ? 'Excluindo...'
+                        : 'Excluir'}
+                    </button>
+                  </article>
+                )
+              })}
             </div>
           )}
-        </article>
+        </section>
       </section>
     </main>
   )
